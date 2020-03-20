@@ -4,5 +4,5 @@ $(error Bad docker registry URL. Should follow format registry.example.com/foo, 
 endif
     REGISTRY=$(DOCKER_REGISTRY)/
 else
-    REGISTRY=vrnetlab/
+    REGISTRY=USE_YOUR_OWN_REGISTRY/
 endif

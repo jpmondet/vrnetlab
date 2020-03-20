@@ -12,11 +12,14 @@ import time
 
 import vrnetlab
 
+
 def handle_SIGCHLD(signal, frame):
     os.waitpid(-1, os.WNOHANG)
 
+
 def handle_SIGTERM(signal, frame):
     sys.exit(0)
+
 
 signal.signal(signal.SIGINT, handle_SIGTERM)
 signal.signal(signal.SIGTERM, handle_SIGTERM)
@@ -24,12 +27,15 @@ signal.signal(signal.SIGCHLD, handle_SIGCHLD)
 
 TRACE_LEVEL_NUM = 9
 logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+
+
 def trace(self, message, *args, **kws):
     # Yes, logger takes its '*args' as 'args'.
     if self.isEnabledFor(TRACE_LEVEL_NUM):
         self._log(TRACE_LEVEL_NUM, message, args, **kws)
-logging.Logger.trace = trace
 
+
+logging.Logger.trace = trace
 
 
 class NXOS_vm(vrnetlab.VM):
@@ -38,11 +44,9 @@ class NXOS_vm(vrnetlab.VM):
             if re.search(".qcow2$", e):
                 disk_image = "/" + e
         super(NXOS_vm, self).__init__(username, password, disk_image=disk_image)
-        self.num_nics = 144
-        self.credentials = [
-                ['admin', 'admin']
-            ]
-
+        self.num_nics = 5
+        self.qemu_args.extend(["-bios", "/bios.bin"])
+        self.credentials = [["admin", "admin"]]
 
     def bootstrap_spin(self):
         """ This function should be called periodically to do work.
@@ -54,16 +58,23 @@ class NXOS_vm(vrnetlab.VM):
             self.start()
             return
 
-        (ridx, match, res) = self.tn.expect([b"login:"], 1)
-        if match: # got a match!
-            if ridx == 0: # login
+        # (ridx, match, res) = self.tn.expect([b"login:"], 1)
+        (ridx, match, res) = self.tn.expect(
+            [b"Abort Power On Auto Provisioning [yes - continue with normal setup, skip - bypass password and basic configuration, no - continue with Power On Auto Provisioning] (yes/skip/no)[no]:", b"login:"], 1
+        )
+        if match:  # got a match!
+            if ridx == 0:
+                self.wait_write("skip", wait=None)
+            elif ridx == 1:
                 self.logger.debug("matched login prompt")
                 try:
                     username, password = self.credentials.pop(0)
                 except IndexError as exc:
                     self.logger.error("no more credentials to try")
                     return
-                self.logger.debug("trying to log in with %s / %s" % (username, password))
+                self.logger.debug(
+                    "trying to log in with %s / %s" % (username, password)
+                )
                 self.wait_write(username, wait=None)
                 self.wait_write(password, wait="Password:")
 
@@ -80,7 +91,7 @@ class NXOS_vm(vrnetlab.VM):
 
         # no match, if we saw some output from the router it's probably
         # booting, so let's give it some more time
-        if res != b'':
+        if res != b"":
             self.logger.trace("OUTPUT: %s" % res.decode())
             # reset spins if we saw some output
             self.spins = 0
@@ -89,14 +100,16 @@ class NXOS_vm(vrnetlab.VM):
 
         return
 
-
     def bootstrap_config(self):
         """ Do the actual bootstrap config
         """
         self.logger.info("applying bootstrap configuration")
         self.wait_write("", None)
         self.wait_write("configure")
-        self.wait_write("username %s password 0 %s role network-admin" % (self.username, self.password))
+        self.wait_write(
+            "username %s password 0 %s role network-admin"
+            % (self.username, self.password)
+        )
 
         # configure mgmt interface
         self.wait_write("interface mgmt0")
@@ -109,14 +122,18 @@ class NXOS_vm(vrnetlab.VM):
 class NXOS(vrnetlab.VR):
     def __init__(self, username, password):
         super(NXOS, self).__init__(username, password)
-        self.vms = [ NXOS_vm(username, password) ]
+        self.vms = [NXOS_vm(username, password)]
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--trace', action='store_true', help='enable trace level logging')
-    parser.add_argument('--username', default='vrnetlab', help='Username')
-    parser.add_argument('--password', default='VR-netlab9', help='Password')
+
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument(
+        "--trace", action="store_true", help="enable trace level logging"
+    )
+    parser.add_argument("--username", default="admin", help="Username")
+    parser.add_argument("--password", default="admin", help="Password")
     args = parser.parse_args()
 
     LOG_FORMAT = "%(asctime)s: %(module)-10s %(levelname)-8s %(message)s"
